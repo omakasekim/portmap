@@ -1,0 +1,36 @@
+{
+  "name": "portmap",
+  "version": "0.1.0",
+  "description": "Zero-config CLI and live topology visualizer mapping active localhost ports, processes, Docker containers, and .env service connections.",
+  "type": "module",
+  "bin": {
+    "portmap": "./bin/portmap.js"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build:client": "tsc --noEmit && vite build",
+    "build:cli": "esbuild src/cli/server.ts --bundle --platform=node --format=esm --outfile=dist/server.mjs",
+    "build": "npm run build:client && npm run build:cli",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "keywords": ["ports", "env", "docker", "localhost", "topology", "devtools", "cli"],
+  "license": "MIT",
+  "dependencies": {
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "esbuild": "^0.24.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}
