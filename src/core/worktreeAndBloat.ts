@@ -196,3 +196,21 @@ export function summarizeBloat(items: BloatEntry[]) {
     reclaimPct: totalMb > 0 ? Math.round((reclaimableMb / totalMb) * 100) : 0,
   };
 }
+
+export function buildNewWorktreeCmd(branch: string, dirPath: string): string {
+  const safeBranch = branch.trim().replace(/[^a-zA-Z0-9/_-]/g, '-') || 'feat/new-branch';
+  const safeDir = dirPath.trim() || `../wt-${safeBranch.split('/').pop()}`;
+  return `git worktree add -b ${safeBranch} "${safeDir}" main`;
+}
+
+export function buildBatchCleanupScript(items: BloatEntry[]): string {
+  if (items.length === 0) return '# Select one or more bloat entries to generate a cleanup script.';
+  const lines = [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    `# portmap safe cleanup plan — est. ${(items.reduce((a, b) => a + b.reclaimableMb, 0) / 1024).toFixed(2)} GB reclaimable`,
+    '',
+    ...items.flatMap((it) => [`# ${it.name} (~${it.reclaimableMb} MB)`, it.safeCleanupCmd, '']),
+  ];
+  return lines.join('\n');
+}

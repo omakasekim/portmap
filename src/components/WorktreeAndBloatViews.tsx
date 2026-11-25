@@ -11,6 +11,8 @@ import {
   X,
 } from 'lucide-react';
 import {
+  buildBatchCleanupScript,
+  buildNewWorktreeCmd,
   buildWorktreeCommands,
   DEMO_BLOAT_ITEMS,
   DEMO_WORKTREES,
@@ -26,6 +28,9 @@ export function WorktreeDeck() {
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [porcelain, setPorcelain] = useState('');
+  const [newBranch, setNewBranch] = useState('feat/observability');
+  const [newDir, setNewDir] = useState('../wt-observability');
+  const newWtCmd = useMemo(() => buildNewWorktreeCmd(newBranch, newDir), [newBranch, newDir]);
 
   const selected = worktrees.find((w) => w.id === selectedId) ?? worktrees[0];
   const cmds = selected ? buildWorktreeCommands(selected) : null;
@@ -194,6 +199,36 @@ export function WorktreeDeck() {
                   </div>
                 ))}
               </div>
+              <div className="space-y-2.5 rounded-xl border border-slate-800 bg-[#090D16] p-4">
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                  + New Worktree Command Builder
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input
+                    value={newBranch}
+                    onChange={(e) => setNewBranch(e.target.value)}
+                    placeholder="Branch name..."
+                    className="rounded border border-slate-700 bg-[#111827] px-2.5 py-1.5 font-mono text-xs text-slate-100"
+                  />
+                  <input
+                    value={newDir}
+                    onChange={(e) => setNewDir(e.target.value)}
+                    placeholder="Target folder..."
+                    className="rounded border border-slate-700 bg-[#111827] px-2.5 py-1.5 font-mono text-xs text-slate-100"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-[#111827] px-2.5 py-2">
+                  <pre className="truncate font-mono text-[11px] text-emerald-200">{newWtCmd}</pre>
+                  <button
+                    type="button"
+                    onClick={() => copyText('newwt', newWtCmd)}
+                    className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-800 px-2 py-0.5 font-mono text-[10px] text-sky-300"
+                  >
+                    {copiedCmd === 'newwt' ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                    Copy
+                  </button>
+                </div>
+              </div>
             </>
           )}
         </aside>
@@ -205,6 +240,7 @@ export function WorktreeDeck() {
 export function LayerBloatRadar() {
   const [kindFilter, setKindFilter] = useState<'all' | BloatEntry['kind']>('all');
   const [selectedId, setSelectedId] = useState<string>(DEMO_BLOAT_ITEMS[0].id);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set(['b2', 'b3']));
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const visible = useMemo(
@@ -212,6 +248,9 @@ export function LayerBloatRadar() {
     [kindFilter],
   );
   const stats = useMemo(() => summarizeBloat(visible), [visible]);
+  const selectedForBatch = useMemo(() => DEMO_BLOAT_ITEMS.filter((i) => checkedIds.has(i.id)), [checkedIds]);
+  const batchScript = useMemo(() => buildBatchCleanupScript(selectedForBatch), [selectedForBatch]);
+  const batchReclaimGb = (selectedForBatch.reduce((a, b) => a + b.reclaimableMb, 0) / 1024).toFixed(2);
   const maxMb = Math.max(1, ...visible.map((v) => v.sizeMb));
   const selected = visible.find((v) => v.id === selectedId) ?? visible[0];
 
@@ -285,6 +324,20 @@ export function LayerBloatRadar() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={checkedIds.has(item.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() =>
+                        setCheckedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(item.id)) next.delete(item.id);
+                          else next.add(item.id);
+                          return next;
+                        })
+                      }
+                      className="h-3.5 w-3.5 accent-emerald-400"
+                    />
                     <Layers className="h-3.5 w-3.5 text-amber-400" />
                     <span className="font-mono text-sm font-bold text-slate-100">{item.name}</span>
                   </div>
@@ -349,6 +402,31 @@ export function LayerBloatRadar() {
                 </div>
                 <pre className="overflow-x-auto rounded-lg border border-slate-800 bg-[#090D16] p-3 font-mono text-xs text-emerald-200">
                   {selected.safeCleanupCmd}
+                </pre>
+              </div>
+
+              <div className="rounded-xl border border-sky-500/30 bg-[#090D16] p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold uppercase tracking-wider text-sky-300">
+                    Batch Cleanup Script ({selectedForBatch.length} selected · {batchReclaimGb} GB)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(batchScript);
+                        setCopiedId('batch');
+                        setTimeout(() => setCopiedId(null), 1500);
+                      } catch {}
+                    }}
+                    className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 font-mono text-[10px] text-sky-300"
+                  >
+                    {copiedId === 'batch' ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                    Copy Script
+                  </button>
+                </div>
+                <pre className="max-h-40 overflow-auto rounded-lg border border-slate-800 bg-[#111827] p-2.5 font-mono text-[10.5px] text-slate-200">
+                  {batchScript}
                 </pre>
               </div>
             </>

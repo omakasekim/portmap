@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildBatchCleanupScript,
+  buildNewWorktreeCmd,
   buildWorktreeCommands,
   DEMO_BLOAT_ITEMS,
   DEMO_WORKTREES,
@@ -26,10 +28,14 @@ branch refs/heads/feat/auth`;
     expect(cmds.remove).toContain('--force');
   });
 
-  it('summarizes total and reclaimable container/cache bloat accurately', () => {
+  it('summarizes total and reclaimable container/cache bloat and generates safe scripts', () => {
     const stats = summarizeBloat(DEMO_BLOAT_ITEMS);
     expect(stats.totalMb).toBeGreaterThan(5000);
     expect(stats.reclaimableMb).toBeGreaterThan(4000);
     expect(stats.reclaimPct).toBeGreaterThan(50);
+
+    const script = buildBatchCleanupScript(DEMO_BLOAT_ITEMS.slice(0, 2));
+    expect(script).toContain('#!/usr/bin/env bash');
+    expect(buildNewWorktreeCmd('feat/metrics', '../wt-metrics')).toContain('git worktree add -b feat/metrics');
   });
 });
