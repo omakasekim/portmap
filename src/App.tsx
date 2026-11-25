@@ -30,6 +30,9 @@ import {
   type DemoPresetId,
 } from './core/scanner.ts';
 import type { ServiceNode, TopologySnapshot } from './core/types.ts';
+import { LayerBloatRadar, WorktreeDeck } from './components/WorktreeAndBloatViews.tsx';
+
+type PortmapMode = 'ports' | 'worktrees' | 'bloat';
 
 function MiniSparkline({ values, color }: { values: number[]; color: string }) {
   if (values.length < 2) return null;
@@ -57,6 +60,7 @@ REDIS_URL=redis://localhost:6379
 JWT_SIGNING_SECRET=sk_live_demo_secret_token_9918`;
 
 export function App() {
+  const [mode, setMode] = useState<PortmapMode>('ports');
   const [preset, setPreset] = useState<DemoPresetId>('chronos');
   const [snapshot, setSnapshot] = useState<TopologySnapshot>(() => buildDemoPreset('chronos'));
   const [nodes, setNodes] = useState<ServiceNode[]>(snapshot.nodes);
@@ -415,6 +419,28 @@ export function App() {
           <div className="flex rounded-lg border border-slate-700 bg-[#0B0F17] p-0.5 text-[11px]">
             {(
               [
+                { id: 'ports', label: 'Ports & .env' },
+                { id: 'worktrees', label: 'Worktree Deck' },
+                { id: 'bloat', label: 'Layer Bloat' },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMode(m.id)}
+                className={`rounded-md px-2.5 py-1 font-medium transition ${
+                  mode === m.id ? 'bg-sky-500/20 text-sky-200' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'ports' && (
+          <div className="flex rounded-lg border border-slate-700 bg-[#0B0F17] p-0.5 text-[11px]">
+            {(
+              [
                 { id: 'chronos', label: 'Web Stack' },
                 { id: 'ai-rag', label: 'AI RAG Pipeline' },
                 { id: 'payments', label: 'Payments Mesh' },
@@ -432,6 +458,7 @@ export function App() {
               </button>
             ))}
           </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -493,6 +520,12 @@ export function App() {
         </div>
       </header>
 
+      {mode === 'worktrees' ? (
+        <WorktreeDeck />
+      ) : mode === 'bloat' ? (
+        <LayerBloatRadar />
+      ) : (
+      <>
       {/* Paste .env or docker-compose.yml Workbench Drawer */}
       {editorOpen && (
         <div className="border-b border-slate-800 bg-[#0F172A] px-4 py-3">
@@ -833,6 +866,8 @@ export function App() {
           </div>
         </aside>
       </div>
+      </>
+      )}
     </div>
   );
 }
