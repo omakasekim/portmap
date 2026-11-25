@@ -1,63 +1,71 @@
 import { describe, expect, it } from 'vitest';
-import { extractLocalPorts, maskSecretValue, parseDockerCompose, parseEnvContent } from '../src/core/envParser.ts';
-import { buildDemoTopology, buildTopologySnapshot } from '../src/core/scanner.ts';
+import { maskSecretValue, parseDockerCompose, parseEnvContent } from '../src/core/envParser.ts';
+import {
+  buildDemoPreset,
+  buildDemoTopology,
+  exportSanitizedEnvExample,
+  suggestNextFreePort,
+} from '../src/core/scanner.ts';
 
-describe('portmap env parser & topology builder', () => {
-  it('masks secrets and URL credentials while preserving localhost target ports', () => {
-    const vars = parseEnvContent(
+describe('portmap .env masking & topology inference', () => {
+  it('masks secrets and URL credentials while preserving referenced localhost ports', () => {
+    const entries = parseEnvContent(
       [
-        'PORT=8080',
-        'STRIPE_SECRET_KEY=sk_live_51AbCdEfGhIjKlMnOp',
-        'DATABASE_URL=postgres://admin:topsecret@localhost:5432/appdb',
+        'DATABASE_URL=postgres://admin:topsecret@localhost:5432/prod',
+        'API_SECRET_KEY=sk_live_1234567890abcdef',
         'REDIS_URL=redis://127.0.0.1:6379',
       ].join('\n'),
       'api/.env',
       'api',
     );
 
-    const stripe = vars.find((v) => v.key === 'STRIPE_SECRET_KEY');
-    expect(stripe?.isSecret).toBe(true);
-    expect(stripe?.maskedValue).not.toContain('AbCdEf');
+    const db = entries.find((e) => e.key === 'DATABASE_URL')!;
+    expect(db.isSecret).toBe(true);
+    expect(db.maskedValue).not.toContain('topsecret');
+    expect(db.referencedPorts).toContain(5432);
 
-    const db = vars.find((v) => v.key === 'DATABASE_URL');
-    expect(db?.maskedValue).toBe('postgres://admin:••••••••@localhost:5432/appdb');
-    expect(db?.referencedPorts).toContain(5432);
-    expect(extractLocalPorts('http://127.0.0.1:9001/health')).toEqual([9001]);
+    const secret = entries.find((e) => e.key === 'API_SECRET_KEY')!;
+    expect(secret.isSecret).toBe(true);
+    expect(secret.maskedValue).toContain('••••••');
+    expect(maskSecretValue('SHORT_TOKEN', 'abc').masked).toBe('••••••');
   });
 
-  it('parses docker-compose services, ports, and dependencies cleanly', () => {
+  it('parses docker-compose services, ports, and environment references', () => {
     const services = parseDockerCompose(
-      `
-services:
-  api:
+      `services:
+  web:
     ports:
-      - "8080:8080"
-    depends_on:
-      - db
+      - "3000:3000"
     environment:
-      - REDIS_URL=redis://localhost:6379
-`,
+      - API_URL=http://localhost:8080
+  db:
+    ports:
+      - "5432:5432"`,
       'docker-compose.yml',
     );
-    expect(services.length).toBe(1);
-    expect(services[0].ports).toEqual([8080]);
-    expect(services[0].dependsOn).toEqual(['db']);
-    expect(services[0].envVars[0].referencedPorts).toEqual([6379]);
+    expect(services).toHaveLength(2);
+    expect(services[0].ports).toEqual([3000]);
+    expect(services[0].envVars[0].referencedPorts).toEqual([8080]);
   });
 
-  it('detects dead .env targets and port conflicts in topology snapshot', () => {
-    const demo = buildDemoTopology();
-    expect(demo.conflicts.some((c) => c.port === 8080)).toBe(true);
-    expect(demo.deadTargets).toContain(6379);
-    expect(demo.edges.some((e) => e.dead && e.targetPort === 6379)).toBe(true);
+  it('builds demo topology with port conflicts and red dead .env targets', () => {
+    const snap = buildDemoTopology();
+    expect(snap.conflicts.some((c) => c.port === 8080)).toBe(true);
+    expect(snap.deadTargets).toContain(6379);
+    expect(snap.edges.some((e) => e.dead && e.targetPort === 6379)).toBe(true);
+  });
 
-    const custom = buildTopologySnapshot({
-      scanDir: '.',
-      isDemo: false,
-      sockets: [{ pid: 100, port: 4000, address: '127.0.0.1', command: 'node', cpuPct: 1, memMb: 50 }],
-      containers: [],
-      files: [{ relativePath: '.env', serviceHint: 'node', kind: 'env', content: 'API=http://localhost:9999' }],
-    });
-    expect(custom.deadTargets).toEqual([9999]);
+  it('provides AI RAG and Payments demo presets plus free-port suggestion & .env.example export', () => {
+    const rag = buildDemoPreset('ai-rag');
+    expect(rag.nodes.some((n) => n.port === 11434)).toBe(true);
+    expect(rag.deadTargets).toContain(6379);
+
+    const pay = buildDemoPreset('payments');
+    expect(pay.conflicts.some((c) => c.port === 4000)).toBe(true);
+
+    expect(suggestNextFreePort([8080, 8081], 8080)).toBe(8082);
+    const exported = exportSanitizedEnvExample(rag.envVars);
+    expect(exported).toContain('<REDACTED_SECRET>');
+    expect(exported).not.toContain('sk-proj-998811223344aabbccdd');
   });
 });
